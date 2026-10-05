@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>모여봐요 동물의 숲 캐릭터 리스트</title>
+  <style>
+    :root {
+      --bg: #f7f9fc;
+      --card-bg: #ffffff;
+      --text: #1f2937;
+      --subtext: #6b7280;
+      --accent: #22c55e;
+      --border: #e5e7eb;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Pretendard", "Noto Sans KR", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+    }
+
+    .description {
+      margin: 0 0 20px;
+      color: var(--subtext);
+      line-height: 1.5;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    input,
+    select,
+    button {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 15px;
+    }
+
+    #searchInput {
+      flex: 1;
+      min-width: 220px;
+    }
+
+    .favorite-toggle {
+      border: 1px solid #fbbf24;
+      background: #fff7d6;
+      color: #92400e;
+      cursor: pointer;
+      min-width: 42px;
+      padding: 8px 10px;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .favorite-toggle.is-favorite {
+      background: #fef3c7;
+      border-color: #f59e0b;
+    }
+
+    #count {
+      margin: 4px 0 16px;
+      color: var(--subtext);
+      font-size: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(17, 24, 39, 0.05);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 18px rgba(17, 24, 39, 0.08);
+    }
+
+    .card img {
+      width: 100%;
+      aspect-ratio: 1/1;
+      object-fit: cover;
+      background: #f3f4f6;
+      display: block;
+    }
+
+    .card-body {
+      padding: 12px;
+    }
+
+    .name {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .meta {
+      margin: 0;
+      color: var(--subtext);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .loading,
+    .error {
+      padding: 20px;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    .error {
+      border-color: #fca5a5;
+      color: #b91c1c;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>모여봐요 동물의 숲 캐릭터 리스트</h1>
+    <p class="description">
+      주민 캐릭터(동물 주민) 목록과 이미지를 한눈에 볼 수 있는 페이지입니다.
+    </p>
+
+    <section class="toolbar" aria-label="필터 영역">
+      <input id="searchInput" type="search" placeholder="이름으로 검색 (예: 페더)" />
+      <select id="speciesFilter" aria-label="종족 필터">
+        <option value="">전체 종족</option>
+      </select>
+      <select id="sortSelect" aria-label="정렬 방식">
+        <option value="default">기본 정렬</option>
+        <option value="name">이름 순</option>
+        <option value="favorite">즐겨찾기 우선</option>
+      </select>
+    </section>
+
+    <p id="count"></p>
+    <section id="content" class="loading">캐릭터 데이터를 불러오는 중...</section>
+  </main>
+
+  <script>
+    const DATA_URL = "https://raw.githubusercontent.com/Norviah/animal-crossing/master/json/data/Villagers.json";
+    const FAVORITES_KEY = "acnh-favorites";
+    const searchInput = document.getElementById("searchInput");
+    const speciesFilter = document.getElementById("speciesFilter");
+    const sortSelect = document.getElementById("sortSelect");
+    const content = document.getElementById("content");
+    const count = document.getElementById("count");
+
+    let villagers = [];
+
+    function getFavorites() {
+      try {
+        return JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]");
+      } catch {
+        return [];
+      }
+    }
+
+    function toggleFavorite(name) {
+      const favorites = getFavorites();
+      const index = favorites.indexOf(name);
+      if (index >= 0) {
+        favorites.splice(index, 1);
+      } else {
+        favorites.push(name);
+      }
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+      renderList();
+    }
+
+    function getDisplayName(v) {
+      const translated = v?.translations?.kRko || v?.name || "Unknown";
+      return translated;
+    }
+
+    function buildSpeciesOptions(data) {
+      const species = [...new Set(data.map((v) => v.species).filter(Boolean))].sort();
+      for (const s of species) {
+        const option = document.createElement("option");
+        option.value = s;
+        option.textContent = s;
+        speciesFilter.appendChild(option);
+      }
+    }
+
+    function getSortedVillagers(filtered) {
+      const favorites = getFavorites();
+      const sortMode = sortSelect.value;
+
+      const list = [...filtered];
+      if (sortMode === "name") {
+        list.sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b), "ko"));
+      } else if (sortMode === "favorite") {
+        list.sort((a, b) => {
+          const aFav = favorites.includes(a.name) ? 1 : 0;
+          const bFav = favorites.includes(b.name) ? 1 : 0;
+          if (aFav !== bFav) return bFav - aFav;
+          return getDisplayName(a).localeCompare(getDisplayName(b), "ko");
+        });
+      }
+      return list;
+    }
+
+    function toCardHTML(v) {
+      const favorites = getFavorites();
+      const isFavorite = favorites.includes(v.name);
+      const displayName = getDisplayName(v);
+      return `
+        <article class="card">
+          <img src="${v.photoImage}" alt="${displayName} 캐릭터 이미지" loading="lazy" />
+          <div class="card-body">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              <h2 class="name" style="margin:0;">${displayName}</h2>
+              <button
+                type="button"
+                class="favorite-toggle ${isFavorite ? "is-favorite" : ""}"
+                data-name="${v.name}"
+                aria-label="${isFavorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}"
+                title="${isFavorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}"
+              >${isFavorite ? "★" : "☆"}</button>
+            </div>
+            <p class="meta">
+              종족: ${v.species || "-"}<br />
+              성격: ${v.personality || "-"}<br />
+              생일: ${v.birthday || "-"}
+            </p>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderList() {
+      const keyword = searchInput.value.trim().toLowerCase();
+      const selectedSpecies = speciesFilter.value;
+      const filtered = villagers.filter((v) => {
+        const displayName = getDisplayName(v).toLowerCase();
+        const matchesName = !keyword || displayName.includes(keyword) || (v.name || "").toLowerCase().includes(keyword);
+        const matchesSpecies = !selectedSpecies || v.species === selectedSpecies;
+        return matchesName && matchesSpecies;
+      });
+
+      const sorted = getSortedVillagers(filtered);
+
+      count.textContent = `총 ${sorted.length}명 표시 중 (전체 ${villagers.length}명)`;
+      content.className = "grid";
+      content.innerHTML = sorted.map(toCardHTML).join("");
+
+      if (!sorted.length) {
+        content.className = "loading";
+        content.textContent = "검색 결과가 없습니다.";
+      }
+
+      content.querySelectorAll(".favorite-toggle").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          const { name } = event.currentTarget.dataset;
+          toggleFavorite(name);
+        });
+      });
+    }
+
+    async function init() {
+      try {
+        const response = await fetch(DATA_URL);
+        if (!response.ok) {
+          throw new Error(`데이터 로딩 실패: HTTP ${response.status}`);
+        }
+        villagers = await response.json();
+        buildSpeciesOptions(villagers);
+        renderList();
+      } catch (error) {
+        content.className = "error";
+        content.textContent = `데이터를 불러오지 못했습니다. (${error.message})`;
+      }
+    }
+
+    searchInput.addEventListener("input", renderList);
+    speciesFilter.addEventListener("change", renderList);
+    sortSelect.addEventListener("change", renderList);
+    init();
+  </script>
+</body>
+</html>
